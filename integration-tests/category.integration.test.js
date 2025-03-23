@@ -13,7 +13,9 @@ let JWToken;
 let admin;
 
 describe('Given Category Controller', () => {
-    beforeAll(async() => {
+    let createdCategoryIds = [];
+
+    beforeAll(async () => {
         mongoServer = await MongoMemoryServer.create();
         const mongoUri = mongoServer.getUri();
 
@@ -30,20 +32,22 @@ describe('Given Category Controller', () => {
             answer: "Admin",
             role: 1,
         });
-    });
-
-    afterAll(async () => {
-        await mongoose.disconnect();
-        await mongoServer.stop();
-    });
-
-    beforeEach(async () => {
-        await categoryModel.deleteMany({});
 
         process.env.JWT_SECRET = "testing";
         JWToken = JWT.sign({ _id: admin._id }, process.env.JWT_SECRET, {
             expiresIn: '7d',
         });
+    });
+
+    afterEach(async () => {
+        await categoryModel.deleteMany({ _id: { $in: createdCategoryIds } });
+        createdCategoryIds = [];
+    });
+
+    afterAll(async () => {
+        await userModel.deleteMany({ email: "admin@a.com" }); // Clean up admin
+        await mongoose.disconnect();
+        await mongoServer.stop();
     });
 
     test('When a new valid category is created', async () => {
@@ -63,6 +67,8 @@ describe('Given Category Controller', () => {
         expect(res.body.category).toHaveProperty('_id');
         expect(res.body.category.name).toBe(newCategory.name);
         expect(res.body.category.slug).toBe(newCategory.slug);
+
+        createdCategoryIds.push(res.body.category._id);
     });
 
     test('When given category name is empty', async () => {
@@ -89,6 +95,7 @@ describe('Given Category Controller', () => {
 
         expect(res.status).toBe(201);
         expect(res.body.category.name).toBe(duplicateCategory.name);
+        createdCategoryIds.push(res.body.category._id);
 
         // Create duplicate category
         const res2 = await request(app)
@@ -107,13 +114,14 @@ describe('Given Category Controller', () => {
             slug: "cat1",
         });
         
-        const res = await request(app)
+        const createRes = await request(app)
             .post('/api/v1/category/create-category')
             .set("Authorization", JWToken)
             .send({ name: newCategory.name });
 
-        const categoryId = res.body.category._id;
-
+        const categoryId = createRes.body.category._id;
+        createdCategoryIds.push(categoryId);
+        
         // Update newly added category
         const updateRes = await request(app)
             .put(`/api/v1/category/update-category/${categoryId}`)
@@ -134,7 +142,7 @@ describe('Given Category Controller', () => {
             .post('/api/v1/category/create-category')
             .set("Authorization", JWToken)
             .send({ name: "Food" });
-        
+
         // Create new category to be edited
         const createRes = await request(app)
             .post('/api/v1/category/create-category')
@@ -142,7 +150,8 @@ describe('Given Category Controller', () => {
             .send({ name: "Computer" });
 
         const categoryId = createRes.body.category._id;
-
+        createdCategoryIds.push(categoryId);
+        
         // Update newly added category to have same name as existing category
         const updateRes = await request(app)
             .put(`/api/v1/category/update-category/${categoryId}`)
@@ -159,7 +168,7 @@ describe('Given Category Controller', () => {
             slug: "cat1",
         });
         
-        // Create category to be deletec
+        // Create category to be deleted
         const res = await request(app)
             .post('/api/v1/category/create-category')
             .set("Authorization", JWToken)
